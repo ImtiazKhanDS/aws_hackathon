@@ -1,13 +1,10 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# React deps & build
+react-client/node_modules/
+react-client/node_modules/.cache/
 
-# Virtual environments
-.venv
-fhir_data.db
-processed_data.json
-data/*
+# Python venv
+python-server/.venv/
+.env
+
+# Notebooks
+*.ipynb

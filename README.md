@@ -1,129 +1,141 @@
-# FHIR Search System
+# MIMIC-FHIR Bedrock Agent
 
-A powerful FHIR search system that provides both traditional and semantic search capabilities for medical records, with support for AWS S3 storage.
+> Production-grade reference implementation for conversational access to the
+> [MIMIC-IV](https://mimic.mit.edu) FHIR data model, powered by AWS Bedrock and
+> React 18.
+
+```
+┌──────────────────────────────┐    ┌─────────────────────────┐
+│  React 18 + Cloudscape UI    │◀──▶│  python-server (FastAPI) │
+└──────────────────────────────┘    │  • S2sSessionManager     │
+                                     │  • MimicFhirAgent        │
+WebSocket (S2S events)               │  • MimicFhirMcpClient    │
+                                     │  • differential_diagnosis│
+┌─────────────┐   Async Threads       └─────────────────────────┘
+│ Bedrock LLM │  & boto3 calls                ▲
+└─────────────┘                                │
+       ▲                                        │
+       │                         Local SQLite   │
+       │                         (fhir/*)       │
+       └────────────────────────────────────────┘
+```
+
+## Repository Layout
+
+```
+aws_hackathon/
+├─ python-server/            # Backend (Python 3.12)
+│  ├─ integration/
+│  │  ├─ mimic_fhir_agent.py # Bedrock agent wrapper
+│  │  ├─ mimic_fhir_mcp_client.py # FHIR tool dispatch
+│  │  ├─ mimic_patient_class.py   # Rich patient object
+│  │  └─ differential_diagnosis.py
+│  ├─ s2s_session_manager.py # Streaming session ↔ frontend
+│  └─ tests/                 # pytest
+├─ react-client/             # Front-end (React 18, TS)
+│  └─ src/s2s.js             # WebSocket + UI renderer
+└─ fhir/                     # Local SQLite FHIR datastore & CLI
+```
 
 ## Features
 
-- Traditional text-based search
-- Patient-specific search capabilities:
-  - Find patients by name, DOB, or identifiers
-  - Retrieve patient observations and vital signs
-  - Get patient conditions and medications
-  - View patient encounters and procedures
-  - Access care team and care plan information
-- Command-line interface for easy interaction
+* 🔎 **Conversational FHIR Search** – Natural-language queries are mapped to
+  schema-validated tool calls (e.g. `findPatient`, `getPatientObservations`).
+* 🩺 **Differential Diagnosis** – Invokes Bedrock Claude Sonnet 4 with patient
+  summary & symptoms to suggest differential lists.
+* 📅 **Follow-up Scheduling** – `scheduleFollowUp` tool writes future
+  appointment meta to the patient record.
+* ⚡ **Streaming S2S Protocol** – Low-latency bi-directional events; supports
+  text+audio.
+* 🗄️ **Local MIMIC-IV Sandbox** – Lightweight SQLite store for offline dev.
 
-## Prerequisites
+## Quick-start
 
-1. Python 3.8+
-4. Required Python packages (see `requirements.txt`)
-
-## Setup Instructions
-
-### 1. Create Project Structure
-
-First, create the required directory structure:
+### 1. Clone & Install
 
 ```bash
-mkdir -p data
+$ git clone <repo-url> && cd aws_hackathon
+$ python -m venv .venv && source .venv/bin/activate
+$ pip install -r python-server/requirements.txt
+$ cd react-client && npm ci && cd ..
 ```
 
-The `data` folder will be used for:
-- Local SQLite database storage
-- Temporary files during processing
+### 2. Environment
 
-### 2. Set Up Virtual Environment
-
-We recommend using uv (uvenv) for managing the virtual environment:
+Set **once** in `~/.bashrc` or similar (do **not** commit secrets):
 
 ```bash
-# Install uv if not already installed
-pip install uv
-
-# Create virtual environment
-uv venv .venv
-
-# Activate virtual environment
-uv activate .venv
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=<key>
+export AWS_SECRET_ACCESS_KEY=<secret>
+export FHIR_AGENT_MODEL=amazon.nova-sonic-v1:0 # optional override
 ```
 
-### 3. Install Dependencies
-
-Install the required packages:
-
-Run the search interface:
+### 3. Ingest Demo Data (optional)
 
 ```bash
-python fhir_search.py
+$ python fhir/process_ndjson.py --ndjson path/to/mimic-fhir.ndjson
 ```
 
-The interface provides several options:
+### 4. Run Services
 
-1. Search by Resource Type
-2. Search by Resource ID
-3. Search by Text
-4. Find Patient
-5. Get Patient Observations
-6. Get Patient Conditions
-7. Get Patient Medications
-8. Get Patient Encounters
-9. Get Patient Allergies
-10. Get Patient Procedures
-11. Get Patient Care Team
-12. Get Patient Care Plans
-13. Get Vital Signs
-14. Get Lab Results
-15. Get Medication History
-16. Execute Custom Query
-17. List All Resource Types
-18. List All Resources
-19. Quit
-
-### Example Usage
-
-1. Find a patient:
-   ```bash
-   Enter your choice (1-19): 4
-   Enter patient search query (name, DOB, etc.): John Smith
-   ```
-
-2. Get patient observations:
-   ```bash
-   Enter your choice (1-19): 5
-   Enter patient ID: 12345
-   ```
-
-3. Execute custom FHIR query:
-   ```bash
-   Enter your choice (1-19): 16
-   Enter custom FHIR query: Condition?patient=12345&status=active
-   ```
-
-## Database Structure
-
-The system uses a SQLite database with the following structure:
-
-```sql
-CREATE TABLE resources (
-    id TEXT PRIMARY KEY,
-    resource_type TEXT NOT NULL,
-    content JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+# backend
+$ cd python-server
+$ python server.py --agent mimic_fhir # port 8000
+# frontend (in another shell)
+$ cd react-client && npm start            # http://localhost:3000
 ```
 
-## Contributing
+> Backend automatically opens WebSocket `/api/s2s` for the React client.
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+## Tool Catalogue
 
-## License
+| Tool Name              | Purpose                                        | Required Params |
+|------------------------|------------------------------------------------|-----------------|
+| `findPatient`          | Search patients by name, DOB, etc.             | `query`         |
+| `searchById`           | Fetch single FHIR resource                     | `resource_id`   |
+| `searchByType`         | All resources of a given FHIR type             | `resource_type` |
+| `getPatientObservations` | Vital-sign / lab Observation list            | `patient_id`    |
+| `getPatientConditions` | Chronic / encounter conditions                 | `patient_id`    |
+| `getPatientMedications`| Active medication requests                     | `patient_id`    |
+| `differential_diagnosis`| Claude-powered differential list              | `patient_id`, `symptoms` |
+| `scheduleFollowUp`     | Persist follow-up appointment time             | `patient_id`, `scheduled_time`, `reason?` |
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Tools are surfaced to the LLM via a JSON schema; new tools are
+self-discoverable at runtime.
 
-## Support
+## Data Flow
 
-For support, please open an issue in the GitHub repository.
+1. React triggers a user prompt over WebSocket.
+2. `S2sSessionManager` streams content to Bedrock; **toolUse** events are
+   intercepted.
+3. `MimicFhirAgent` maps tool to `MimicFhirMcpClient`, executes async (with
+   timeout guards).
+4. Responses are truncated safely (15 kB) and streamed back; React merges via
+   `deepMerge` into component state.
+
+## Testing
+
+```bash
+$ pytest -q python-server/tests
+```
+
+All new code **must** include Google-style docstrings and tests. Continuous
+integration uses `ruff` + `pytest`.
+
+## Deployment
+
+*Python server* is container-ready (`Dockerfile` TBD). Front-end can be shipped
+via Netlify (`npm run build`). Use **AWS Bedrock** VPC endpoints in production.
+
+## Roadmap
+
+- 🔐 Fine-grained IAM for tool execution
+- 🩺 Clinical validation rules engine
+- 📊 Grafana dashboards for prompt & performance metrics
+
+---
+### License
+MIT (c) 2025 — for educational / research purposes only. MIMIC-IV data is
+subject to PhysioNet credentialing.
