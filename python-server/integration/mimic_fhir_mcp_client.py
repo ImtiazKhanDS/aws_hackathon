@@ -23,7 +23,7 @@ class MimicFhirMcpClient:
     
     # Static mapping from human-readable names to MIMIC patient IDs
     NAME_TO_ID_MAP: Dict[str, str] = {
-        "John Smith": "0a8eebfd-a352-522e-89f0-1d4a13abdebc",
+        "John Smith": "88fcbf73-7d80-52ae-8f11-ee73c71df69b",
     }
     
     def __init__(self, db_path: str = None):
@@ -214,7 +214,7 @@ class MimicFhirMcpClient:
         # Get observations
         observations = await self.call_tool({
             "tool": "get_patient_observations",
-            "parameters": {"patient_id": patient_id, "count": 1000}
+            "parameters": {"patient_id": patient_id, "count": 100}
         })
         if isinstance(observations, list):
             for obs in observations:
