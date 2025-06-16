@@ -1,4 +1,4 @@
-#!/Users/theo/Library/CloudStorage/OneDrive-RackspaceInc/Documents/aws_hackathon/python-server/.venv/bin/python3
+#!/Users/imti8391/Desktop/projects/rackspace/innovation/aws_competition_final/aws_hackathon/python-server/.venv/bin/python3
 
 import sys
 import json
